@@ -7,8 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories("include")
 
+find_package(ICU 66.1 REQUIRED COMPONENTS uc dt)
+
+file(GLOB SRC_FILES src/*.cpp)
 add_library(excelr8 SHARED
-    src/excelr8.cpp
+    ${SRC_FILES}
 )
 
 set_target_properties(excelr8 PROPERTIES
@@ -18,3 +21,5 @@ set_target_properties(excelr8 PROPERTIES
 )
 
 target_include_directories("excelr8" INTERFACE "include")
+target_include_directories("excelr8" PRIVATE ${ICU_INCLUDE_DIRS})
+target_link_libraries("excelr8" PRIVATE ${ICU_LIBRARIES})
