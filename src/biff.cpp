@@ -1,4 +1,5 @@
 #include "excelr8/biff.hpp"
+#include "excelr8/util.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <format>
@@ -17,10 +18,10 @@ int calc_nchars(const data_t& data, int pos, int lenlen)
     // nchars:int = unpack('<' + 'BH'[lenlen-1], data[pos:pos+lenlen])[0]
     if (lenlen == 1) {
         // 'B' == unsigned char
-        return std::get<0>(unpack<pytype_B>(vslice(data, pos, pos + lenlen)));
+        return std::get<0>(data.slice(pos, pos + lenlen).unpack<pytype_B>());
     } else { // lenlen = 2
         // 'H' == unsigned short
-        return std::get<0>(unpack<pytype_H>(vslice(data, pos, pos + lenlen)));
+        return std::get<0>(data.slice(pos, pos + lenlen).unpack<pytype_H>());
     }
 }
 
@@ -49,7 +50,7 @@ std::string unpack_string(const data_t& data, int pos, const std::string& encodi
 {
     int nchars = calc_nchars(data, pos, lenlen);
     pos += lenlen;
-    auto slice = vslice(data, pos, pos + nchars);
+    auto slice = data.slice(pos, pos + nchars);
     return unicode(slice, encoding);
 }
 
@@ -64,7 +65,7 @@ std::pair<std::string, int> unpack_string_update_pos(const data_t& data, int pos
     }
 
     int newpos = pos + nchars;
-    auto slice = vslice(data, pos, newpos);
+    auto slice = data.slice(pos, newpos);
     return { unicode(slice, encoding), newpos };
 }
 
@@ -79,7 +80,7 @@ std::string unpack_unicode(const data_t& data, int pos, int lenlen = 2)
     }
 
     pos += lenlen;
-    auto options = (unsigned char)data[pos];
+    auto options = (unsigned char)data.data()[pos];
     pos += 1;
 
     std::string strg;
@@ -95,7 +96,7 @@ std::string unpack_unicode(const data_t& data, int pos, int lenlen = 2)
     }
     if (options & 0x01) {
         // Uncompressed UTF-16-LE
-        auto rawstrg = vslice(data, pos, pos + 2 * nchars);
+        auto rawstrg = data.slice(pos, pos + 2 * nchars);
         // if DEBUG: print "nchars=%d pos=%d rawstrg=%r" % (nchars, pos, rawstrg)
         strg = unicode(rawstrg, "utf_16_le");
         // pos += 2*nchars
@@ -105,7 +106,7 @@ std::string unpack_unicode(const data_t& data, int pos, int lenlen = 2)
         // if the local codepage was cp1252 -- however this would rapidly go pear-shaped
         // for other codepages so we grit our Anglocentric teeth and return Unicode :-)
 
-        auto slice = vslice(data, pos, pos + nchars);
+        auto slice = data.slice(pos, pos + nchars);
         strg = unicode(slice, "latin_1");
         // pos += nchars
     }
@@ -119,7 +120,7 @@ std::string unpack_unicode(const data_t& data, int pos, int lenlen = 2)
     return strg;
 }
 
-std::pair<std::string, int> unpack_unicode_update_pos(const data_t& data, int pos, int lenlen = 2, int known_len = -1)
+std::pair<std::string, int> unpack_unicode_update_pos(const data_t& data, size_t pos, int lenlen = 2, int known_len = -1)
 {
     int nchars;
     if (known_len != -1) {
@@ -133,7 +134,7 @@ std::pair<std::string, int> unpack_unicode_update_pos(const data_t& data, int po
         return { "", pos };
     }
 
-    auto options = (unsigned char)data[pos];
+    auto options = (unsigned char)data.data()[pos];
     pos += 1;
     auto phonetic = options & 0x04;
     auto richtext = options & 0x08;
@@ -141,20 +142,20 @@ std::pair<std::string, int> unpack_unicode_update_pos(const data_t& data, int po
     int rt, sz;
     std::string strg;
     if (richtext != 0) {
-        rt = std::get<0>(unpack<pytype_H>(vslice(data, pos, pos + 2)));
+        rt = std::get<0>(data.slice(pos, pos + 2).unpack<pytype_H>());
         pos += 2;
     }
     if (phonetic) {
-        sz = std::get<0>(unpack<pytype_i>(vslice(data, pos, pos + 4)));
+        sz = std::get<0>(data.slice(pos, pos + 4).unpack<pytype_i>());
         pos += 4;
     }
     if (options & 0x01) {
         // Uncompressed UTF-16-LE
-        strg = unicode(vslice(data, pos, pos + 2 * nchars), "utf_16_le");
+        strg = unicode(data.slice(pos, pos + 2 * nchars), "utf_16_le");
         pos += 2 * nchars;
     } else {
         // Note: this is COMPRESSED (not ASCII) encoding!!!
-        strg = unicode(vslice(data, pos, pos + nchars), "latin_1");
+        strg = unicode(data.slice(pos, pos + nchars), "latin_1");
         pos += nchars;
     }
 
@@ -178,18 +179,18 @@ int unpack_cell_range_address_list_update_pos(std::vector<pytype_H>& output_list
         return -1;
     }
 
-    uint16_t n = std::get<0>(unpack<pytype_H>(vslice(data, pos, pos + 2)));
+    uint16_t n = std::get<0>(data.slice(pos, pos + 2).unpack<pytype_H>());
     pos += 2;
 
     for (int i = 0; i < n; i++) {
-        auto slice = vslice(data, pos, pos + addr_size);
+        auto slice = data.slice(pos, pos + addr_size);
         int ra, rb, ca, cb;
         if (addr_size == 6) {
             // <HHBB
-            std::tie(ra, rb, ca, cb) = unpack<pytype_H, pytype_H, pytype_B, pytype_B>(slice);
+            std::tie(ra, rb, ca, cb) = slice.unpack<pytype_H, pytype_H, pytype_B, pytype_B>();
         } else { // addr_size = 8
             // <HHHH
-            std::tie(ra, rb, ca, cb) = unpack<pytype_H, pytype_H, pytype_H, pytype_H>(slice);
+            std::tie(ra, rb, ca, cb) = slice.unpack<pytype_H, pytype_H, pytype_H, pytype_H>();
         }
         output_list.push_back(ra);
         output_list.push_back(rb);
@@ -209,7 +210,7 @@ void hex_char_dump(const std::string& strg, int ofs, int dlen, int base = 0, std
     std::string num_prefix = "";
     while (pos < endpos) {
         int endsub = std::min<int>(pos + 16, endpos);
-        int lensub = endsub - pos;
+        size_t lensub = endsub - pos;
         std::string substrg = strg.substr(pos, lensub);
         if (lensub <= 0 or lensub != substrg.length()) {
             fout << std::format(
@@ -250,7 +251,7 @@ void biff_dump(const data_t& mem, int stream_offset, int stream_len, int base = 
     std::string num_prefix;
 
     while (stream_end - pos >= 4) {
-        std::tie(rc, length) = unpack<pytype_H, pytype_H>(vslice(mem, pos, pos + 4));
+        std::tie(rc, length) = mem.slice(pos, pos + 4).unpack<pytype_H, pytype_H>();
         if (rc == 0 and length == 0) {
             bool allNull = true;
             for (auto it = mem.begin() + pos; it != mem.end(); it++) {
@@ -322,7 +323,7 @@ void biff_count_records(const data_t& mem, int stream_offset, int stream_len, st
 
     while (stream_end - pos >= 4) {
         std::string recname;
-        auto [rc, length] = unpack<pytype_H, pytype_H>(vslice(mem, pos, pos + 4));
+        auto [rc, length] = mem.slice(pos, pos + 4).unpack<pytype_H, pytype_H>();
         if (rc == 0 and length == 0) {
             bool allNull = true;
             for (auto it = mem.begin() + pos; it != mem.end(); it++) {
@@ -353,5 +354,6 @@ void biff_count_records(const data_t& mem, int stream_offset, int stream_len, st
         fout << std::format("%8d %s\n", count, recname);
     }
 }
+
 
 }

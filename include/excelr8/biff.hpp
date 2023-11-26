@@ -1,9 +1,9 @@
 #pragma once
 
-#include "util.hpp"
-#include <exception>
+#include "excelr8/data.hpp"
 #include <fstream>
 #include <ostream>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -12,7 +12,7 @@
 
 namespace excelr8::biff {
 
-class XLReadError : public std::exception {
+class dllexport Excelr8Error : public std::runtime_error {
     // An exception indicating problems reading data from an Excel file.
 };
 
@@ -20,7 +20,7 @@ class BaseObject {
     // Not implemented yet
 };
 
-class Manifest {
+class dllexport Manifest {
 public:
     int n;
     int mask;
@@ -391,16 +391,16 @@ const std::unordered_map<int, std::string> encoding_from_codepage {
     11 Gurmukhi [2]
 */
 
-bool is_cell_opcode(int c);
-void upkbits(void* tgt_obj, int src, std::vector<Manifest>& manifests);
-void upkbitsL(void* tgt_obj, int src, std::vector<Manifest>& manifests);
-std::string unpack_string(const data_t& data, int pos, const std::string& encoding, int lenlen);
-std::pair<std::string, int> unpack_string_update_pos(const data_t& data, int pos, const std::string& encoding, int lenlen, int known_len);
-std::string unpack_unicode(const data_t& data, int pos, int lenlen);
-std::pair<std::string, int> unpack_unicode_update_pos(const data_t& data, int pos, int lenlen, int known_len);
-int unpack_cell_range_address_list_update_pos(std::vector<pytype_H>& output_list, const data_t data, int pos, int addr_size);
-void hex_char_dump(const std::string& strg, int ofs, int dlen, int base, std::ostream& fout, bool unnumbered);
-void biff_dump(const data_t& mem, int stream_offset, int stream_len, int base, std::ostream& fout, bool unnumbered);
-void biff_count_records(const data_t& mem, int stream_offset, int stream_len, std::ostream& fout);
+dllexport bool is_cell_opcode(int c);
+dllexport void upkbits(void* tgt_obj, int src, std::vector<Manifest>& manifests);
+dllexport void upkbitsL(void* tgt_obj, int src, std::vector<Manifest>& manifests);
+dllexport std::string unpack_string(const data_t& data, int pos, const std::string& encoding, int lenlen);
+dllexport std::pair<std::string, int> unpack_string_update_pos(const data_t& data, int pos, const std::string& encoding, int lenlen, int known_len);
+dllexport std::string unpack_unicode(const data_t& data, int pos, int lenlen);
+dllexport std::pair<std::string, int> unpack_unicode_update_pos(const data_t& data, int pos, int lenlen, int known_len);
+dllexport int unpack_cell_range_address_list_update_pos(std::vector<pytype_H>& output_list, const data_t data, int pos, int addr_size);
+dllexport void hex_char_dump(const std::string& strg, int ofs, int dlen, int base, std::ostream& fout, bool unnumbered);
+dllexport void biff_dump(const data_t& mem, int stream_offset, int stream_len, int base, std::ostream& fout, bool unnumbered);
+dllexport void biff_count_records(const data_t& mem, int stream_offset, int stream_len, std::ostream& fout);
 
 }
