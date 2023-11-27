@@ -60,5 +60,7 @@ public:
     size_t size() const;
     std::vector<std::byte>::const_iterator begin() const;
     std::vector<std::byte>::const_iterator end() const;
+    bool operator==(const data_t& other) const;
+    bool operator!=(const data_t& other) const;
 };
 }
