@@ -40,9 +40,10 @@ std::tuple<Ts...> data_t::unpack(size_t offset) const
 template <typename T>
 std::vector<T> data_t::unpack_vec(size_t count) const
 {
+    size_t offset = 0;
     std::vector<T> result(count);
-    for (int i = 0; i < count; i++) {
-        T item = _unpack<T>(i * sizeof(T));
+    for (size_t i = 0; i < count; i++) {
+        T item = _unpack<T>(offset);
         result.push_back(item);
     }
     return result;
@@ -93,5 +94,10 @@ template std::tuple<pytype_i> data_t::unpack<pytype_i>(size_t) const;
 template std::tuple<pytype_H, pytype_H, pytype_B, pytype_B> data_t::unpack<pytype_H, pytype_H, pytype_B, pytype_B>(size_t) const;
 template std::tuple<pytype_H, pytype_H, pytype_H, pytype_H> data_t::unpack<pytype_H, pytype_H, pytype_H, pytype_H>(size_t) const;
 template std::tuple<pytype_H, pytype_H> data_t::unpack<pytype_H, pytype_H>(size_t) const;
+template std::tuple<pytype_i, pytype_i> data_t::unpack<pytype_i, pytype_i>(size_t) const;
+template std::tuple<pytype_H, pytype_B, pytype_B, pytype_i, pytype_i, pytype_i> data_t::unpack<pytype_H, pytype_B, pytype_B, pytype_i, pytype_i, pytype_i>(size_t) const;
+template std::tuple<pytype_I, pytype_I, pytype_I, pytype_I> data_t::unpack<pytype_I, pytype_I, pytype_I, pytype_I>(size_t) const;
+
+template std::vector<pytype_i> data_t::unpack_vec<pytype_i>(size_t) const;
 
 }
