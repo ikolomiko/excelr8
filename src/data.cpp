@@ -66,6 +66,11 @@ bool data_t::operator!=(const data_t& other) const
     return _data != other._data;
 }
 
+std::string data_t::to_string() const
+{
+    return std::string(reinterpret_cast<const char*>(_data.data()), _data.size());
+}
+
 template pytype_B data_t::_unpack<pytype_B>(size_t&) const;
 template pytype_H data_t::_unpack<pytype_H>(size_t&) const;
 template pytype_i data_t::_unpack<pytype_i>(size_t&) const;

@@ -62,5 +62,6 @@ public:
     std::vector<std::byte>::const_iterator end() const;
     bool operator==(const data_t& other) const;
     bool operator!=(const data_t& other) const;
+    std::string to_string() const;
 };
 }
