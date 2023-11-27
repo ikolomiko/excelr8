@@ -8,6 +8,12 @@ data_t::data_t(std::vector<std::byte>& buffer)
 {
 }
 
+data_t::data_t(const std::string& buffer)
+{
+    _data = std::vector<std::byte>(buffer.size());
+    std::memcpy(_data.data(), buffer.data(), buffer.size());
+}
+
 data_t data_t::slice(int start, int end) const
 {
     std::vector<std::byte> vec = { _data.begin() + start, _data.begin() + end + 1 };

@@ -17,6 +17,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 // python struct type aliases
 // taken from https://docs.python.org/3/library/struct.html
@@ -50,6 +51,7 @@ private:
 
 public:
     data_t(std::vector<std::byte>& buffer);
+    data_t(const std::string& buffer);
     data_t slice(int start, int end) const;
 
     template <typename... Ts>
