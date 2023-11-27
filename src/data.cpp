@@ -1,4 +1,5 @@
 #include "excelr8/data.hpp"
+#include <cstddef>
 #include <cstring>
 #include <vector>
 
@@ -34,6 +35,17 @@ template <typename... Ts>
 std::tuple<Ts...> data_t::unpack(size_t offset) const
 {
     return std::make_tuple(_unpack<Ts>(offset)...);
+}
+
+template <typename T>
+std::vector<T> data_t::unpack_vec(size_t count) const
+{
+    std::vector<T> result(count);
+    for (int i = 0; i < count; i++) {
+        T item = _unpack<T>(i * sizeof(T));
+        result.push_back(item);
+    }
+    return result;
 }
 
 const std::byte* data_t::data() const

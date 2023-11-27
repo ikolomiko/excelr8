@@ -14,10 +14,10 @@
 #endif
 #endif
 
-#include <vector>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // python struct type aliases
 // taken from https://docs.python.org/3/library/struct.html
@@ -33,16 +33,15 @@ using pytype_l = int32_t; // aka long (but 4 bytes)
 using pytype_L = uint32_t; // aka ulong (but 4 bytes)
 using pytype_q = int64_t; // aka long long (8 bytes)
 using pytype_Q = uint64_t; // aka unsigned long long (8 bytes)
-//using pytype_n = ssize_t;
+// using pytype_n = ssize_t;
 using pytype_N = size_t;
 // skipping pytype_e
 using pytype_f = float;
 using pytype_d = double;
 // skipping the rest
 
-
 namespace excelr8 {
-    class dllexport data_t {
+class dllexport data_t {
 private:
     std::vector<std::byte> _data;
 
@@ -56,6 +55,10 @@ public:
 
     template <typename... Ts>
     std::tuple<Ts...> unpack(size_t offset = 0) const;
+
+    template <typename T>
+    std::vector<T> unpack_vec(size_t count) const;
+
     const std::byte* data() const;
     size_t size() const;
     std::vector<std::byte>::const_iterator begin() const;
