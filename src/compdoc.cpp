@@ -9,8 +9,8 @@
 namespace excelr8::compdoc {
 
 DirNode::DirNode(int did, const data_t dent, int debug, std::ostream& logfile)
-    : did(did)
-    , logfile(logfile)
+    : logfile(logfile)
+    , did(did)
 {
     pytype_H cbufsize;
     std::tie(cbufsize, etype, color, left_did, right_did, root_did)
@@ -88,11 +88,15 @@ CompDoc::CompDoc(const data_t& mem, std::ostream& logfile, int debug, bool ignor
         logfile << std::format("@@@@ sec_size=%d short_sec_size=%d\n", sec_size, short_sec_size);
     }
 
-    int SAT_tot_secs, SSAT_first_sec_sid, SSAT_tot_secs, MSATX_first_sec_sid, MSATX_tot_secs, _unused;
-    std::tie(SAT_tot_secs, dir_first_sec_sid, _unused, min_size_std_stream,
-        SSAT_first_sec_sid, SSAT_tot_secs,
-        MSATX_first_sec_sid, MSATX_tot_secs)
-        = mem.slice(44, 76).unpack<pytype_i, pytype_i, pytype_i, pytype_i, pytype_i, pytype_i, pytype_i, pytype_i>();
+    auto _info = mem.slice(44, 76).unpack_vec<pytype_i>(8);
+    int SAT_tot_secs = _info[0];
+    dir_first_sec_sid = _info[1];
+    // _info[2] is unused
+    min_size_std_stream = _info[3];
+    int SSAT_first_sec_sid = _info[4];
+    int SSAT_tot_secs = _info[5];
+    int MSATX_first_sec_sid = _info[6];
+    int MSATX_tot_secs = _info[7];
 
     size_t mem_data_len = mem.size() - 512;
     int mem_data_secs = mem_data_len / sec_size;
