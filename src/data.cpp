@@ -21,7 +21,7 @@ data_t data_t::slice(int start, int end) const
 }
 
 template <typename T>
-T data_t::_unpack(size_t offset) const
+T data_t::_unpack(size_t& offset) const
 {
     T result;
     const char* buffer = (const char*)(_data.data());
@@ -56,9 +56,9 @@ std::vector<std::byte>::const_iterator data_t::end() const
     return _data.end();
 }
 
-template pytype_B data_t::_unpack<pytype_B>(size_t offset) const;
-template pytype_H data_t::_unpack<pytype_H>(size_t offset) const;
-template pytype_i data_t::_unpack<pytype_i>(size_t offset) const;
+template pytype_B data_t::_unpack<pytype_B>(size_t&) const;
+template pytype_H data_t::_unpack<pytype_H>(size_t&) const;
+template pytype_i data_t::_unpack<pytype_i>(size_t&) const;
 
 template std::tuple<pytype_B> data_t::unpack<pytype_B>(size_t) const;
 template std::tuple<pytype_H> data_t::unpack<pytype_H>(size_t) const;

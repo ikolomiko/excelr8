@@ -47,7 +47,7 @@ private:
     std::vector<std::byte> _data;
 
     template <typename T>
-    T _unpack(size_t offset) const;
+    T _unpack(size_t& offset) const;
 
 public:
     data_t(std::vector<std::byte>& buffer);
