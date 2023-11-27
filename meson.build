@@ -12,6 +12,7 @@ cpp_files = files(
     'src/excelr8.cpp',
     'src/util.cpp',
     'src/data.cpp',
+    'src/compdoc.cpp',
 )
 
 incl_dir = include_directories('include')
