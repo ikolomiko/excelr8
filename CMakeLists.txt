@@ -19,6 +19,13 @@ add_library(excelr8
     ${HPP_FILES}
 )
 
+target_compile_options("excelr8" PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wno-sign-compare
+)
+
 set_target_properties(excelr8 PROPERTIES
   POSITION_INDEPENDENT_CODE ON
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
