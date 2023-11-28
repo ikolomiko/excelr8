@@ -3,6 +3,7 @@
 #include "excelr8/util.hpp"
 #include <cassert>
 #include <format>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -357,6 +358,181 @@ data_t& CompDoc::_get_stream(const data_t& mem, int base, std::vector<int>& sat,
     }
 
     return *sectors;
+}
+
+std::tuple<const data_t*, int, int> CompDoc::_locate_stream(const data_t& mem, int base, std::vector<int>& sat,
+    int sec_size, int start_sid, int expected_stream_size, const std::string& qname, int seen_id)
+{
+    // print >> self.logfile, "_locate_stream", base, sec_size, start_sid, expected_stream_size
+    int s = start_sid;
+    if (s < 0) {
+        throw CompDocError(std::format("_locate_stream: start_sid (%d) is -ve", start_sid));
+    }
+    int p = -99; // dummy previous SID
+    int start_pos = -9999;
+    int end_pos = -8888;
+    std::vector<std::pair<int, int>> slices;
+    size_t tot_found = 0;
+    size_t found_limit = (expected_stream_size + sec_size - 1) / sec_size;
+
+    while (s >= 0) {
+        if (seen[s]) {
+            if (!ignore_workbook_corruption) {
+                logfile << std::format("_locate_stream(%s): seen\n", qname);
+                dump_list(seen, 20, logfile);
+                throw CompDocError(std::format("%s corruption: seen[%d] == %d", qname, s, seen[s]));
+            }
+        }
+        seen[s] = seen_id;
+        tot_found += 1;
+        if (tot_found > found_limit) {
+            // Note: expected size rounded up higher sector
+            throw CompDocError(std::format("%s: size exceeds expected %d bytes; corrupt?",
+                qname, found_limit * sec_size));
+        }
+        if (s == p + 1) {
+            // contiguous sectors
+            end_pos += sec_size;
+        } else {
+            // start new slice
+            if (p >= 0) {
+                // not first time
+                slices.push_back({ start_pos, end_pos });
+            }
+            start_pos = base + s * sec_size;
+            end_pos = start_pos + sec_size;
+        }
+        p = s;
+        s = sat[s];
+    }
+    assert(s == EOCSID);
+    assert(tot_found == found_limit);
+    // print >> self.logfile, "_locate_stream(%s): seen" % qname; dump_list(self.seen, 20, self.logfile)
+    if (slices.empty()) {
+        // The stream is contiguous ... just what we like!
+        return { &mem, start_pos, expected_stream_size };
+    }
+    slices.push_back({ start_pos, end_pos });
+    // print >> self.logfile, "+++>>> %d fragments" % len(slices)
+
+    data_t* data = new data_t();
+    for (const auto& [start_pos, end_pos] : slices) {
+        data->append(mem.slice(start_pos, end_pos));
+    }
+    return { data, 0, expected_stream_size };
+}
+
+bool ichar_equals(char a, char b)
+{
+    return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+}
+
+// Case-insensitive string equality check
+bool iequals(std::string_view lhs, std::string_view rhs)
+{
+    return std::ranges::equal(lhs, rhs, ichar_equals);
+}
+
+std::vector<std::string> split(const std::string& input, char delimiter)
+{
+    std::vector<std::string> result;
+    std::istringstream ss(input);
+    std::string token;
+
+    while (std::getline(ss, token, delimiter)) {
+        result.push_back(token);
+    }
+
+    return result;
+}
+
+DirNode* CompDoc::_dir_search(const std::vector<std::string>& path, int storage_did)
+{
+    // Return matching DirNode instance, or nullptr
+    std::string head = path[0];
+    std::vector<std::string> tail = { path.begin() + 1, path.end() };
+    for (const auto& child : dirlist[storage_did]->children) {
+        if (iequals(dirlist[child]->name, head)) {
+            const auto& et = dirlist[child]->etype;
+            if (et == 2) {
+                return dirlist[child];
+            }
+            if (et == 1) {
+                if (tail.empty()) {
+                    throw CompDocError("Requested component is a 'storage'");
+                }
+                return _dir_search(tail, child);
+            }
+            dirlist[child]->dump(1);
+            throw CompDocError("Requested stream is not a 'user stream'");
+        }
+    }
+
+    return nullptr;
+}
+
+/**
+    Interrogate the compound document's directory; return the stream as a
+    string if found, otherwise return ``None``.
+
+    :param qname:
+        Name of the desired stream e.g. ``'Workbook'``.
+        Should be in Unicode or convertible thereto.
+*/
+data_t* CompDoc::get_named_stream(const std::string& qname)
+{
+    const auto d = _dir_search(split(qname, '/'));
+    if (d == nullptr) {
+        return nullptr;
+    }
+    if (d->tot_size >= min_size_std_stream) {
+        return &_get_stream(mem, 512, SAT, sec_size, d->first_sid, d->tot_size, qname, d->did + 6);
+    } else {
+        return &_get_stream(*SSCS, 0, SSAT, short_sec_size, d->first_sid, d->tot_size, qname + " (from SSCS)");
+    }
+}
+
+/**
+    Interrogate the compound document's directory.
+
+    If the named stream is not found, ``(None, 0, 0)`` will be returned.
+
+    If the named stream is found and is contiguous within the original
+    byte sequence (``mem``) used when the document was opened,
+    then ``(mem, offset_to_start_of_stream, length_of_stream)`` is returned.
+
+    Otherwise a new string is built from the fragments and
+    ``(new_string, 0, length_of_stream)`` is returned.
+
+    :param qname:
+        Name of the desired stream e.g. ``'Workbook'``.
+        Should be in Unicode or convertible thereto.
+*/
+std::tuple<const data_t*, int, int> CompDoc::locate_named_stream(const std::string& qname)
+{
+    const auto d = _dir_search(split(qname, '/'));
+    if (d == nullptr) {
+        return { nullptr, 0, 0 };
+    }
+    if (d->tot_size > mem_data_len) {
+        throw CompDocError(std::format("%s stream length (%d bytes) > file data size (%d bytes)", qname, d->tot_size, mem_data_len));
+    }
+    if (d->tot_size >= min_size_std_stream) {
+        auto result = _locate_stream(mem, 512, SAT, sec_size, d->first_sid, d->tot_size, qname, d->did + 6);
+        if (debug) {
+            logfile << "\nseen\n";
+            dump_list(seen, 20, logfile);
+        }
+        return result;
+    } else {
+        return {
+            &_get_stream(
+                *SSCS, 0, SSAT, short_sec_size, d->first_sid,
+                d->tot_size, qname + " (from SSCS)"),
+            0,
+            d->tot_size
+        };
+    }
 }
 
 template <typename T>
