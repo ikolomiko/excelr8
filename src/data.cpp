@@ -4,6 +4,9 @@
 #include <vector>
 
 namespace excelr8 {
+
+data_t::data_t() { }
+
 data_t::data_t(std::vector<std::byte>& buffer)
     : _data(buffer)
 {

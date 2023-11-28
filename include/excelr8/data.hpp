@@ -49,6 +49,7 @@ private:
     T _unpack(size_t& offset) const;
 
 public:
+    data_t();
     data_t(std::vector<std::byte>& buffer);
     data_t(const std::string& buffer);
     data_t slice(int start, int end) const;
