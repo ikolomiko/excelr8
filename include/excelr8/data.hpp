@@ -66,6 +66,8 @@ public:
     std::vector<std::byte>::const_iterator end() const;
     bool operator==(const data_t& other) const;
     bool operator!=(const data_t& other) const;
+    inline data_t& operator+=(const data_t& other);
+    data_t& append(const data_t& other);
     std::string to_string() const;
 };
 }

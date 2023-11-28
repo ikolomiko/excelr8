@@ -82,6 +82,18 @@ bool data_t::operator!=(const data_t& other) const
     return _data != other._data;
 }
 
+inline data_t& data_t::operator+=(const data_t& other)
+{
+    _data.insert(_data.end(), other._data.begin(), other._data.end());
+    return *this;
+}
+
+data_t& data_t::append(const data_t& other)
+{
+    *this += other;
+    return *this;
+}
+
 std::string data_t::to_string() const
 {
     return std::string(reinterpret_cast<const char*>(_data.data()), _data.size());
