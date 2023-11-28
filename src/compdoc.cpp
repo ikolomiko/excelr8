@@ -1,7 +1,9 @@
 #include "excelr8/compdoc.hpp"
 #include "excelr8/data.hpp"
 #include "excelr8/util.hpp"
+#include <cassert>
 #include <format>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -99,7 +101,7 @@ CompDoc::CompDoc(const data_t& mem, std::ostream& logfile, int debug, bool ignor
     int MSATX_tot_secs = _info[7];
 
     size_t mem_data_len = mem.size() - 512;
-    int mem_data_secs = mem_data_len / sec_size;
+    size_t mem_data_secs = mem_data_len / sec_size;
     int left_over = mem_data_len % sec_size;
     if (left_over) {
         // throw CompDocError("Not a whole number of sectors");
@@ -109,7 +111,7 @@ CompDoc::CompDoc(const data_t& mem, std::ostream& logfile, int debug, bool ignor
 
     this->mem_data_secs = mem_data_secs; // use for checking later
     this->mem_data_len = mem_data_len;
-    seen = std::vector<std::byte>(mem_data_secs, std::byte(0));
+    seen = std::vector<unsigned char>(mem_data_secs, 0);
 
     if (debug) {
         logfile << std::format("sec sizes %d %d %d %d\n", ssz, sssz, sec_size, short_sec_size);
@@ -120,5 +122,274 @@ CompDoc::CompDoc(const data_t& mem, std::ostream& logfile, int debug, bool ignor
     }
 
     int nent = sec_size / 4; // number of SID entries in a sector
+    int trunc_warned = 0;
+
+    //
+    // === build the MSAT ===
+    //
+    std::vector<int> MSAT = mem.slice(76, 512).unpack_vec<int>(109);
+    int SAT_sectors_reqd = (mem_data_secs + nent - 1) / nent;
+    int expected_MSATX_sectors = std::max(0, (SAT_sectors_reqd - 109 + nent - 2) / (nent - 1));
+    int actual_MSATX_sectors = 0;
+
+    if (MSATX_tot_secs == 0 and (MSATX_first_sec_sid == 0 or MSATX_first_sec_sid == EOCSID or MSATX_first_sec_sid == FREESID)) {
+        // Strictly, if there is no MSAT extension, then MSATX_first_sec_sid
+        // should be set to EOCSID ... FREESID and 0 have been met in the wild.
+        // pass # Presuming no extension
+    } else {
+        int sid = MSATX_first_sec_sid;
+        while (sid != EOCSID and sid != FREESID and sid != MSATSID) {
+            // Above should be only EOCSID according to MS & OOo docs
+            // but Excel doesn't complain about FREESID. Zero is a valid
+            // sector number, not a sentinel.
+            if (debug > 1) {
+                logfile << std::format("MSATX: sid=%d (0x%08X)\n", sid, sid);
+            }
+            if (sid >= mem_data_secs) {
+                std::string msg = std::format("MSAT extension: accessing sector %d but only %d in file", sid, mem_data_secs);
+                if (debug > 1) {
+                    logfile << msg << std::endl;
+                }
+                throw CompDocError(msg);
+            } else if (sid < 0) {
+                throw CompDocError("MSAT extension: invalid sector id: " + std::to_string(sid));
+            }
+            if (seen[sid]) {
+                throw CompDocError(std::format("MSAT corruption: seen[%d] == %d", sid, seen[sid]));
+            }
+            seen[sid] = 1;
+            actual_MSATX_sectors += 1;
+            if (debug and actual_MSATX_sectors > expected_MSATX_sectors) {
+                logfile << "[1]===>>> " << mem_data_secs << " " << nent << " " << SAT_sectors_reqd << " " << expected_MSATX_sectors << " " << actual_MSATX_sectors << std::endl;
+            }
+            int offset = 512 + sec_size * sid;
+            auto extension = mem.slice(offset, offset + sec_size).unpack_vec<int>(nent);
+            MSAT.insert(MSAT.end(), extension.begin(), extension.end());
+            sid = MSAT.back();
+            MSAT.pop_back(); // last sector id is sid of next sector in the chain
+        }
+    }
+
+    if (debug and actual_MSATX_sectors != expected_MSATX_sectors) {
+        logfile << "[2]===>>> " << mem_data_secs << " " << nent << " " << SAT_sectors_reqd << " " << expected_MSATX_sectors << " " << actual_MSATX_sectors << std::endl;
+    }
+    if (debug) {
+        logfile << "MSAT: len = " << MSAT.size() << std::endl;
+        dump_list(MSAT, 10, logfile);
+    }
+
+    //
+    // === build the SAT ===
+    //
+    int actual_SAT_sectors = 0;
+    int dump_again = 0;
+    for (size_t msidx = 0; msidx < MSAT.size(); msidx++) {
+        int msid = MSAT[msidx];
+        if (msid == FREESID or msid == EOCSID) {
+            // Specification: the MSAT array may be padded with trailing FREESID entries.
+            // Toleration: a FREESID or EOCSID entry anywhere in the MSAT array will be ignored.
+            continue;
+        }
+        if (msid >= mem_data_secs) {
+            if (!trunc_warned) {
+                logfile << "WARNING *** File is truncated, or OLE2 MSAT is corrupt!!" << std::endl;
+                logfile << std::format("INFO: Trying to access sector %d but only %d available\n", msid, mem_data_secs);
+                trunc_warned = 1;
+            }
+            MSAT[msidx] = EVILSID;
+            dump_again = 1;
+            continue;
+        } else if (msid < -2) {
+            throw CompDocError("MSAT: invalid sector id: " + std::to_string(msid));
+        }
+        if (seen[msid]) {
+            throw CompDocError(std::format("MSAT extension corruption: seen[%d] == %d", msid, seen[msid]));
+        }
+        seen[msid] = 2;
+        actual_SAT_sectors += 1;
+        if (debug and actual_SAT_sectors > SAT_sectors_reqd) {
+            logfile << std::format("[3]===>>> %d %d %d %d %d %d %d\n", mem_data_secs, nent, SAT_sectors_reqd, expected_MSATX_sectors, actual_MSATX_sectors, actual_SAT_sectors, msid);
+        }
+        int offset = 512 + sec_size * msid;
+        std::vector<int> extension = mem.slice(offset, offset + sec_size).unpack_vec<int>(nent);
+        SAT.insert(SAT.end(), extension.begin(), extension.end());
+    }
+
+    if (debug) {
+        logfile << "SAT: len = " << SAT.size() << std::endl;
+        dump_list(SAT, 10, logfile);
+        // print >> logfile, "SAT ",
+        // for i, s in enumerate(self.SAT):
+        //     print >> logfile, "entry: %4d offset: %6d, next entry: %4d" % (i, 512 + sec_size * i, s)
+        //     print >> logfile, "%d:%d " % (i, s),
+        logfile << std::endl;
+    }
+    if (debug and dump_again) {
+        logfile << "MSAT: len = " << MSAT.size() << std::endl;
+        dump_list(MSAT, 10, logfile);
+        for (size_t satx = mem_data_secs; satx < SAT.size(); satx++) {
+            SAT[satx] = EVILSID;
+        }
+        logfile << "SAT: len = " << SAT.size() << std::endl;
+        dump_list(SAT, 10, logfile);
+    }
+
+    //
+    // === build the directory ===
+    //
+    data_t dbytes = _get_stream(mem, 512, SAT, sec_size, dir_first_sec_sid, -1, "directory", 3);
+    std::vector<DirNode*> dirlist;
+    int did = -1;
+    for (size_t pos = 0; pos < dbytes.size(); pos += 128) {
+        did += 1;
+        dirlist.push_back(new DirNode(did, dbytes.slice(pos, pos + 128), 0, logfile));
+    }
+    this->dirlist = dirlist;
+    _build_family_tree(dirlist, 0, dirlist[0]->root_did); // and stand well back ...
+    if (debug) {
+        for (const auto& d : dirlist) {
+            d->dump(debug);
+        }
+    }
+
+    //
+    // === get the SSCS ===
+    //
+    auto sscs_dir = this->dirlist[0];
+    assert(sscs_dir->etype == 5); // root entry
+    if (sscs_dir->first_sid < 0 or sscs_dir->tot_size == 0) {
+        // Problem reported by Frank Hoffsuemmer: some software was
+        // writing -1 instead of -2 (EOCSID) for the first_SID
+        // when the SCCS was empty. Not having EOCSID caused assertion
+        // failure in _get_stream.
+        // Solution: avoid calling _get_stream in any case when the
+        // SCSS appears to be empty.
+        SSCS = new data_t();
+    } else {
+        SSCS = &_get_stream(mem, 512, SAT, sec_size, sscs_dir->first_sid, sscs_dir->tot_size, "SSCS", 4);
+    }
+    // if DEBUG: print >> logfile, "SSCS", repr(self.SSCS)
+
+    //
+    // === build the SSAT ===
+    //
+    if (SSAT_tot_secs > 0 and sscs_dir->tot_size == 0) {
+        logfile << "WARNING *** OLE2 inconsistency: SSCS size is 0 but SSAT size is non-zero" << std::endl;
+    }
+    if (sscs_dir->tot_size > 0) {
+        int sid = SSAT_first_sec_sid;
+        int nsecs = SSAT_tot_secs;
+        while (sid >= 0 and nsecs > 0) {
+            if (seen[sid]) {
+                throw CompDocError(std::format("SSAT corruption: seen[%d] == %d\n", sid, seen[sid]));
+            }
+            seen[sid] = 5;
+            nsecs -= 1;
+            int start_pos = 512 + sid * sec_size;
+            auto news = mem.slice(start_pos, start_pos + sec_size).unpack_vec<int>(nent);
+            SSAT.insert(SSAT.end(), news.begin(), news.end());
+            sid = SAT[sid];
+        }
+        if (debug) {
+            logfile << std::format("SSAT last sid %d; remaining sectors %d\n", sid, nsecs);
+        }
+        assert(nsecs == 0 and sid == EOCSID);
+    }
+    if (debug) {
+        logfile << "SSAT" << std::endl;
+        dump_list(SSAT, 10, logfile);
+
+        logfile << "seen" << std::endl;
+        dump_list(seen, 20, logfile);
+    }
+}
+
+data_t& CompDoc::_get_stream(const data_t& mem, int base, std::vector<int>& sat, int sec_size, int start_sid, int size, std::string name, int seen_id)
+{
+    // print >> self.logfile, "_get_stream", base, sec_size, start_sid, size
+    data_t* sectors = new data_t();
+    int s = start_sid;
+    if (size == -1) {
+        // nothing to check agains
+        while (s >= 0) {
+            if (seen_id != -1) {
+                if (seen[s]) {
+                    throw CompDocError(std::format("%s corruption: seen[%d] == %d", name, s, seen[s]));
+                }
+                seen[s] = seen_id;
+            }
+            int start_pos = base + s * sec_size;
+            sectors->append(mem.slice(start_pos, start_pos + sec_size));
+            if (s < sat.size()) {
+                s = sat[s];
+            } else {
+                throw CompDocError(std::format("OLE2 stream %s: sector allocation table invalid entry (%d)", name, s));
+            }
+        }
+        assert(s == EOCSID);
+    } else {
+        int todo = size;
+        while (s >= 0) {
+            if (seen_id != -1) {
+                if (seen[s]) {
+                    throw CompDocError(std::format("%s corruption: seen[%d] == %d", name, s, seen[s]));
+                }
+                seen[s] = seen_id;
+            }
+            int start_pos = base + s * sec_size;
+            int grab = sec_size;
+            if (grab > todo) {
+                grab = todo;
+            }
+            todo -= grab;
+            sectors->append(mem.slice(start_pos, start_pos + grab));
+            if (s < sat.size()) {
+                s = sat[s];
+            } else {
+                throw CompDocError(std::format("OLE2 stream %s: sector allocation table invalid entry (%d)", name, s));
+            }
+        }
+        assert(s == EOCSID);
+        if (todo != 0) {
+            logfile << std::format("WARNING *** OLE2 stream %s: expected size %d, actual size %d\n",
+                name, size, size - todo);
+        }
+    }
+
+    return *sectors;
+}
+
+template <typename T>
+void dump_list(std::vector<T>& list, int stride, std::ostream& f)
+{
+    auto _dump_line = [&](int dpos, int equal = 0) {
+        f << std::format("%5d%s ", dpos, " ="[equal]);
+        for (int i = dpos; i < dpos + stride; i++) {
+            auto& value = list[i];
+            f << std::to_string(value) << " ";
+        }
+        f << std::endl;
+    };
+
+    int pos = 0, oldpos = -1;
+    for (pos = 0; pos < list.size(); pos += stride) {
+        if (oldpos == -1) {
+            _dump_line(pos);
+            oldpos = pos;
+        } else {
+            std::vector<T> v1 = { list.begin() + pos, list.begin() + pos + stride + 1 };
+            std::vector<T> v2 = { list.begin() + oldpos, list.begin() + oldpos + stride + 1 };
+            if (v1 != v2) {
+                if (pos - oldpos > stride) {
+                    _dump_line(pos - stride, 1);
+                }
+                _dump_line(pos);
+                oldpos = pos;
+            }
+        }
+    }
+    if (oldpos != -1 and pos != 0 and pos != oldpos) {
+        _dump_line(pos, 1);
+    }
 }
 }

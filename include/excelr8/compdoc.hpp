@@ -7,7 +7,9 @@ from an OLE2 Compound Document file.
 */
 
 #include "excelr8/data.hpp"
+#include <format>
 #include <iostream>
+#include <memory>
 #include <ostream>
 #include <stdexcept>
 #include <vector>
@@ -31,11 +33,11 @@ class dllexport DirNode {
 private:
     std::ostream& logfile;
     unsigned char color;
-    int32_t first_sid, tot_size;
     std::string name;
     uint32_t tsinfo[4];
 
 public:
+    int32_t first_sid, tot_size;
     int32_t did, left_did, right_did, root_did;
     int32_t parent = -1; // -1 indicates orphan, fixed up later
     std::vector<int32_t> children;
@@ -59,10 +61,18 @@ private:
     int32_t dir_first_sec_sid, min_size_std_stream;
     const data_t& mem;
     int mem_data_secs, mem_data_len;
-    std::vector<std::byte> seen;
+    std::vector<unsigned char> seen;
+    std::vector<int> SAT, SSAT;
+    std::vector<DirNode*> dirlist;
+    data_t* SSCS = nullptr;
+
+    data_t& _get_stream(const data_t& mem, int base, std::vector<int>& sat, int sec_size, int start_sid, int size = -1, std::string name = "", int seen_id = -1);
 
 public:
     CompDoc(const data_t& mem, std::ostream& logfile = std::cout, int debug = 0, bool ignore_workbook_corruption = false);
 };
+
+template <typename T>
+void dump_list(std::vector<T>& list, int stride, std::ostream& f = std::cout);
 
 }
