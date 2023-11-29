@@ -13,6 +13,9 @@ cpp_files = files(
     'src/util.cpp',
     'src/data.cpp',
     'src/compdoc.cpp',
+    'src/formatting.cpp',
+    'src/book.cpp',
+    'src/name.cpp',
 )
 
 incl_dir = include_directories('include')
