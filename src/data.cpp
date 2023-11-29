@@ -112,6 +112,8 @@ template std::tuple<pytype_H, pytype_H> data_t::unpack<pytype_H, pytype_H>(size_
 template std::tuple<pytype_i, pytype_i> data_t::unpack<pytype_i, pytype_i>(size_t) const;
 template std::tuple<pytype_H, pytype_B, pytype_B, pytype_i, pytype_i, pytype_i> data_t::unpack<pytype_H, pytype_B, pytype_B, pytype_i, pytype_i, pytype_i>(size_t) const;
 template std::tuple<pytype_I, pytype_I, pytype_I, pytype_I> data_t::unpack<pytype_I, pytype_I, pytype_I, pytype_I>(size_t) const;
+template std::tuple<pytype_H, pytype_H, pytype_H, pytype_H, pytype_H, pytype_B, pytype_B, pytype_B> data_t::unpack<pytype_H, pytype_H, pytype_H, pytype_H, pytype_H, pytype_B, pytype_B, pytype_B>(size_t) const;
+template std::tuple<pytype_H, pytype_H, pytype_H> data_t::unpack<pytype_H, pytype_H, pytype_H>(size_t) const;
 
 template std::vector<pytype_i> data_t::unpack_vec<pytype_i>(size_t) const;
 
